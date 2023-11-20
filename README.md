@@ -29,9 +29,7 @@ remotes::install_github("matbou85/ggScatRidges")
 ## Basic usage
 
 ``` r
-<!--
-library(StatHelper)
---> 
+
 StatHelper(x = myData, group = myData$group, var1 = myData$weight, paired = T) ## paired-sample t.test
 
 ```
