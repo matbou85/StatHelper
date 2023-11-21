@@ -1,3 +1,4 @@
+
 library(varhandle)
 library(ggpubr)
 library(RVAideMemoire)
@@ -14,14 +15,8 @@ StatHelper <- function(x = NULL,
                      var2 = FALSE,
                      var3 = FALSE,
                      quiet = FALSE,
+                     mu = 25,
                      ...){
-
-  # # collect information -----------------------------------------------------
-  # {
-  #   init_col_classes <- sapply(x, class)
-  #   init_col_can_be_numeric <- sapply(x, function(.){ all(varhandle::check.numeric(.)) })
-  # }
-
 
   # preprocessing -----------------------------------------------------------
   ## construct our x to be dataframe
@@ -38,37 +33,33 @@ StatHelper <- function(x = NULL,
   }
   
   # the green tree ----------------------------------------------------------
-  if(ncol(x) == 1L){
-    if(all()){
-      res <- my_chisq.test(x)
+  if(!missing(var1) & missing(var2) & missing(var3) & missing(group) & all(varhandle::check.numeric(var1))){
+    res <- shapiro.test(var1)
+    if(res$p.value > 0.05){
+      plot1 <- ggqqplot(var1, ylab = "",
+               ggtheme = theme_minimal())
+      test <- t.test(var1, mu = mu)
+      return(list(plot1, test))
+    }else if(res$p.value < 0.05){
+      plot1 <- ggqqplot(var1, ylab = "",
+                        ggtheme = theme_minimal())
+      test <- wilcox.test(var1, mu = mu)
+      return(list(plot1, test))
     }
-  }else if(ncol(x) == 2L & nrow(x) == 2L){
-    prop.test(
-      x = var1, # counts of successes
-      n = var2, # total counts
-      p = p # expected proportion
-    )
-    binom.test(
-      x = var1, # counts of successes
-      n = var2, # total counts
-      p = p # expected proportion
-    )
-  }else if (nrow(x) == 1L){
-    chisq.test(dat$Freq, # observed frequencies
-               p = df$Expected_relative_freq # expected proportions
-    )
-    
-  }
-  
+
   # the blue tree -----------------------------------------------------------
 
 # paired samples ----------------------------------------------------------
-  else if (paired){
-    if((sum(!sapply(x, function(.){ all(varhandle::check.numeric(.)) })) == 2L) & ncol(x) == 2L){
-      mcnemar.test(var1, var2)
-    }else if((sum(!sapply(x, function(.){ all(varhandle::check.numeric(.)) })) != 2L) & ncol(x) != 2L){
-      cochran.qtest(var1 ~ var2 | var3,
+  }else if (paired){
+    if(missing(var3) & sum(!sapply(cbind.data.frame(var1, var2), function(.){ all(varhandle::check.numeric(.)) })) == 2L){
+      msg <- "Because the samples are paired and two character vectors were provided by the user then a McNemar's test seems to be nost appropriate."
+      test <- mcnemar.test(var1, var2)
+      return(list(msg, test))
+    }else if(!missing(var3) & sum(!sapply(cbind.data.frame(var1, var2, var3), function(.){ all(varhandle::check.numeric(.)) })) == 3L){
+      msg <- "Because the samples are paired and three character vectors were provided by the user then a Cochran's Q test seems to be nost appropriate."
+      test <- cochran.qtest(var1 ~ var2 | var3,
                     data = x)
+      return(list(msg, test))
     }else if(all(!varhandle::check.numeric(group))){
       if((length(unique(group)) == 2L) & (length(group) == length(var1))){
         xx <- cbind.data.frame(var1, group)
@@ -80,7 +71,7 @@ StatHelper <- function(x = NULL,
             norm <- xx %>%
               group_by(group) %>% 
               summarise(p.value = shapiro.test(var1)$p.value)
-            stat1 <- t.test(weight ~ group, data = my_data, paired = TRUE)
+            stat1 <- t.test(var1 ~ group, data = x, paired = TRUE)
             return(list(norm, stat1))
           }
         }else if(all(res$p.value > 0.05) == F){
@@ -89,14 +80,31 @@ StatHelper <- function(x = NULL,
                       paired = TRUE,
                       alternative = "greater")
         }
+      }else if((length(unique(group)) > 2L) & (length(group) == length(var1))){
+        xx <- cbind.data.frame(var1, var2, group)
+        res <- xx %>%
+          group_by(group) %>% 
+          summarise(p.value = shapiro.test(var1)$p.value)
+        if(all(res$p.value > 0.05) == T){
+          plot1 <- ggqqplot(var1, ylab = "",
+                            ggtheme = theme_minimal())
+          res.aov <- anova_test(data = xx, dv = var1, wid = var2, within = group)
+          test <- get_anova_table(res.aov)
+          return(list(plot1, test))
+        }else if(any(res$p.value < 0.05) == T){
+          plot1 <- ggqqplot(var1, ylab = "",
+                            ggtheme = theme_minimal())
+          test <- friedman_test(data = xx, var1 ~ group |var2)
+          return(list(plot1, test))
+        }
       }
     }
   }
 # Independent samples -----------------------------------------------------
-  else if((sum(sapply(x, function(.){ all(varhandle::check.numeric(.)) })) == 2L) & ncol(x) == 2L){
-        fisher.test(x,
+  else if(!missing(var1) & !missing(var2) &missing(group) & (sum(sapply(cbind.data.frame(var1, var2), function(.){ all(varhandle::check.numeric(.)) })) == 2L)){
+        fisher.test(var1, var2,
                     alternative="two.sided")
-  }else if ((all(sapply(x, function(.){ all(varhandle::check.numeric(.)) }))) & ncol(x) > 2){
+  }else if(missing(var1) & missing(var2) & missing(var3) & missing(group) & (sum(sapply(x, function(.){ all(varhandle::check.numeric(.)) })) > 2L) & ncol(x) > 2){
     chisq.test(x, simulate.p.value = TRUE)
   }else if (all(!varhandle::check.numeric(group))){
     if((length(unique(group)) == 2L) & (length(group) == length(var1))){
@@ -136,11 +144,38 @@ StatHelper <- function(x = NULL,
                           ggtheme = theme_minimal())
         return(list(plot1, norm, var, stat1))
       } 
-    }else if((length(unique(group)) != 2L) & (length(group) == length(var1))){
-      norm <- leveneTest(weight ~ group, data = my_data)
-      if (any(norm$`Pr(>F)` > 0.05)){
-        aov(var1 ~ group,
+    }else if((length(unique(group)) > 2L) & (length(group) == length(var1))){
+      xx <- cbind.data.frame(var1, group)
+      var <- leveneTest(var1 ~ group, data = x)
+      res <- xx %>%
+        group_by(group) %>% 
+        summarise(p.value = shapiro.test(var1)$p.value)
+      if (any(var$`Pr(>F)` > 0.05) & all(res$p.value > 0.05) == T){
+        norm <- xx %>%
+          group_by(group) %>% 
+          summarise(p.value = shapiro.test(var1)$p.value)
+        res.aov <- aov(var1 ~ group,
             data = x)
+        test <- summary(res.aov)
+        plot <- plot(res.aov, 2)
+        msg <- message("A post-hoc test might be appropriate")
+        return(list(norm, test, plot, msg))
+      }else if(any(var$`Pr(>F)` < 0.05)){
+        norm <- xx %>%
+          group_by(group) %>% 
+          summarise(p.value = shapiro.test(var1)$p.value)
+        test <- oneway.test(var1 ~ group,
+                               data=x,
+                               var.equal=FALSE)
+        plot1 <- ggqqplot(var1, ylab = "",
+                          ggtheme = theme_minimal())
+        msg <- message("A post-hoc test might be appropriate (See Tukey, Dunnett etc.)")
+        return(list(norm, test, plot1, msg))
+      }else if(any(res$p.value < 0.05) == T){
+        test <- kruskal.test(var1 ~ group,
+                             data = x)
+        msg <- message("A post-hoc test might be appropriate (See Dunn)")
+        return(list(test, msg))
       }
     }
   else{
@@ -153,7 +188,23 @@ StatHelper <- function(x = NULL,
     cli::cli_alert_warning("This function for now does not handle more than two variables.")
   }
   
-  
-  # return(x)
-}
+  }
+
+
+
+
+StatHelper(x = mtcars2, var1 = mtcars2$mpg, mu = 25) ## one sample t.test
+StatHelper(x = data, var1 = data$before, var2 = data$after, paired = T) ## McNemar Test
+StatHelper(x = Data, var1 = Data$Response, var2 = Data$Practice, var3 = Data$Student, paired = T) ## Cochran’s Q test
+StatHelper(x = mtcars3) ## chi-square test of independence
+StatHelper(x = Matriz, var1 = Matriz$Heron, var2 = Matriz$Egret) ## Fisher exact test
+StatHelper(x = sleep2, group = sleep2$group, var1 = sleep2$extra) ## t.test for independent samples
+StatHelper(x = welsh, group = welsh$group, var1 = welsh$x) ## Welsh t.test for independent samples
+StatHelper(x = Mann, group = Mann$Speaker, var1 = Mann$Likert) ## Mann-Whitney U-test
+StatHelper(x = my_data, group = my_data$group, var1 = my_data$weight, paired = T) ## paired-sample t.test
+StatHelper(x = anova, group = anova$group, var1 = anova$weight) ## anova t.test
+StatHelper(x = selfesteem, group = selfesteem$time, var1 = selfesteem$score, var2 = selfesteem$id, paired = TRUE) ## paired-sample t.test
+
+
+
 
