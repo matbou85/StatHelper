@@ -5,7 +5,7 @@ library(RVAideMemoire)
 # library(broom)
 library(dplyr)
 library(car)
-
+library("crayon")
 
 StatHelper <- function(x = NULL,
                      y = NULL,
@@ -36,15 +36,19 @@ StatHelper <- function(x = NULL,
   if(!missing(var1) & missing(var2) & missing(var3) & missing(group) & all(varhandle::check.numeric(var1))){
     res <- shapiro.test(var1)
     if(res$p.value > 0.05){
+      msg <- cat(paste0("Because only one column was given and the normality test showed that the distribution of the data are not significantly different (Shapiro-Wilk normality test > 0.05), the function assume that a ", crayon::red$bold$underline("One Sample t-test"), " is most appropriate."))
       plot1 <- ggqqplot(var1, ylab = "",
                ggtheme = theme_minimal())
       test <- t.test(var1, mu = mu)
-      return(list(plot1, test))
+      return(list(msg, res, plot1, test))
     }else if(res$p.value < 0.05){
+      msg <- cat(paste0("Because only one column was given and the normality test showed that the distribution of the data are significantly different (Shapiro-Wilk normality test < 0.05), the function assume that a ", crayon::red$bold$underline("One Sample Wilcoxon test"), " is most appropriate."))
       plot1 <- ggqqplot(var1, ylab = "",
                         ggtheme = theme_minimal())
       test <- wilcox.test(var1, mu = mu)
-      return(list(plot1, test))
+      return(list(msg, res, plot1, test))
+      return(msg)
+      return(test)
     }
 
   # the blue tree -----------------------------------------------------------
@@ -52,11 +56,11 @@ StatHelper <- function(x = NULL,
 # paired samples ----------------------------------------------------------
   }else if (paired){
     if(missing(var3) & sum(!sapply(cbind.data.frame(var1, var2), function(.){ all(varhandle::check.numeric(.)) })) == 2L){
-      msg <- "Because the samples are paired and two character vectors were provided by the user then a McNemar's test seems to be nost appropriate."
+      msg <- cat(paste0("Because the samples are paired and two character vectors were provided by the user then a ", crayon::red$bold$underline("McNemar's test"), " seems to be nost appropriate."))
       test <- mcnemar.test(var1, var2)
       return(list(msg, test))
     }else if(!missing(var3) & sum(!sapply(cbind.data.frame(var1, var2, var3), function(.){ all(varhandle::check.numeric(.)) })) == 3L){
-      msg <- "Because the samples are paired and three character vectors were provided by the user then a Cochran's Q test seems to be nost appropriate."
+      msg <- cat(paste0("Because the samples are paired and three character vectors were provided by the user then a ", crayon::red$bold$underline("Cochran's Q test"), " seems to be nost appropriate."))
       test <- cochran.qtest(var1 ~ var2 | var3,
                     data = x)
       return(list(msg, test))
@@ -68,17 +72,17 @@ StatHelper <- function(x = NULL,
           summarise(p.value = shapiro.test(var1)$p.value)
         if(nrow(x) < 30L){
           if(all(res$p.value > 0.05) == T){
-            norm <- xx %>%
-              group_by(group) %>% 
-              summarise(p.value = shapiro.test(var1)$p.value)
+            msg <- cat(paste0("Because the samples are paired and two columns were given as input (group and var1) and the normality test showed that the distribution of the data are not significantly different (Shapiro-Wilk normality test > 0.05), the function assume that a ", crayon::red$bold$underline("Paired t-test"), " is most appropriate."))
             stat1 <- t.test(var1 ~ group, data = x, paired = TRUE)
-            return(list(norm, stat1))
+            return(list(msg, res, stat1))
           }
         }else if(all(res$p.value > 0.05) == F){
-          wilcox.test(var1 ~ group,
+          msg <- cat(paste0("Because the samples are paired and two columns were given as input (group and var1) and the normality test showed that the distribution of the data are significantly different (Shapiro-Wilk normality test < 0.05), the function assume that a ", crayon::red$bold$underline("Paired Wilcoxon test"), " is most appropriate."))
+          test <- wilcox.test(var1 ~ group,
                       data = x,
                       paired = TRUE,
                       alternative = "greater")
+          return(list(msg, res, test))
         }
       }else if((length(unique(group)) > 2L) & (length(group) == length(var1))){
         xx <- cbind.data.frame(var1, var2, group)
@@ -86,26 +90,32 @@ StatHelper <- function(x = NULL,
           group_by(group) %>% 
           summarise(p.value = shapiro.test(var1)$p.value)
         if(all(res$p.value > 0.05) == T){
+          msg <- cat(paste0("Because the samples are paired and three or more groups were given as input (group and var1) and the normality test showed that the distribution of the data are not significantly different (Shapiro-Wilk normality test > 0.05), the function assume that a ", crayon::red$bold$underline("repeated measures ANOVA test"), " is most appropriate."))
           plot1 <- ggqqplot(var1, ylab = "",
                             ggtheme = theme_minimal())
           res.aov <- anova_test(data = xx, dv = var1, wid = var2, within = group)
           test <- get_anova_table(res.aov)
-          return(list(plot1, test))
+          return(list(msg, plot1, test))
         }else if(any(res$p.value < 0.05) == T){
+          msg <- cat(paste0("Because the samples are paired and three or more groups were given as input (group and var1) and the normality test showed that the distribution of the data are significantly different (Shapiro-Wilk normality test < 0.05), the function assume that a ", crayon::red$bold$underline("Friedman test"), " is most appropriate."))
           plot1 <- ggqqplot(var1, ylab = "",
                             ggtheme = theme_minimal())
           test <- friedman_test(data = xx, var1 ~ group |var2)
-          return(list(plot1, test))
+          return(list(msg, plot1, test))
         }
       }
     }
-  }
+  
 # Independent samples -----------------------------------------------------
-  else if(!missing(var1) & !missing(var2) &missing(group) & (sum(sapply(cbind.data.frame(var1, var2), function(.){ all(varhandle::check.numeric(.)) })) == 2L)){
-        fisher.test(var1, var2,
-                    alternative="two.sided")
+  }else if(!missing(var1) & !missing(var2) & missing(group) & (sum(sapply(cbind.data.frame(var1, var2), function(.){ all(varhandle::check.numeric(.)) })) == 2L)){
+    msg <- cat(paste0("Because the samples are independent and two character columns were given as input (var1 and var2), the function assume that a ", crayon::red$bold$underline("Fisher's exact test"), " is most appropriate."))
+    test <- fisher.test(var1, var2,
+      alternative="two.sided")
+    return(list(msg, test))
   }else if(missing(var1) & missing(var2) & missing(var3) & missing(group) & (sum(sapply(x, function(.){ all(varhandle::check.numeric(.)) })) > 2L) & ncol(x) > 2){
-    chisq.test(x, simulate.p.value = TRUE)
+    msg <- cat(paste0("Because the samples are independent and several numeric columns were given as input, the function assume that a ", crayon::red$bold$underline("Chi-square test of independence"), " is most appropriate."))
+    test <- chisq.test(x, simulate.p.value = TRUE)
+    return(list(msg, test))
   }else if (all(!varhandle::check.numeric(group))){
     if((length(unique(group)) == 2L) & (length(group) == length(var1))){
       xx <- cbind.data.frame(var1, group)
@@ -114,35 +124,27 @@ StatHelper <- function(x = NULL,
         summarise(p.value = shapiro.test(var1)$p.value)
       var <- var.test(var1 ~ group, data = x)
       if((all(res$p.value > 0.05) == T) & var$p.value > 0.05){
-        norm <- xx %>%
-          group_by(group) %>% 
-          summarise(p.value = shapiro.test(var1)$p.value)
+        msg <- cat(paste0("Because the samples are independent and two groups were given as input (group and var1), the normality test showed that the distribution of the data are not significantly different (Shapiro-Wilk normality test > 0.05), and the variance test showed no significance between variances (F-test > 0.05), the function assume that a ", crayon::red$bold$underline("student's t-test"), " is most appropriate."))
         var <- var.test(var1 ~ group, data = x)
         stat1 <- t.test(var1 ~ group, var.equal = T)
         plot1 <- ggqqplot(var1, ylab = "",
                           ggtheme = theme_minimal())
-        return(list(plot1, norm, var, stat1))
+        return(list(msg, plot1, res, var, stat1))
       }
       else if((all(res$p.value > 0.05) == T) & var$p.value < 0.05){
-        norm <- xx %>%
-          group_by(group) %>% 
-          summarise(p.value = shapiro.test(var1)$p.value)
-        var <- var.test(var1 ~ group, data = x)
+        msg <- cat(paste0("Because the samples are independent and two groups were given as input (group and var1), the normality test showed that the distribution of the data are not significantly different (Shapiro-Wilk normality test > 0.05), and the variance test showed significance between variances (F-test < 0.05), the function assume that a ", crayon::red$bold$underline("Welch's test"), " is most appropriate."))
         stat1 <- t.test(var1 ~ group, var.equal = T)
         plot1 <- ggqqplot(var1, ylab = "",
                           ggtheme = theme_minimal())
-        return(list(plot1, norm, var, stat1))
+        return(list(msg, plot1, res, var, stat1))
       }
       else if(any(res$p.value < 0.05) == T){
-        norm <- xx %>%
-          group_by(group) %>% 
-          summarise(p.value = shapiro.test(var1)$p.value)
-        var <- var.test(var1 ~ group, data = x)
+        msg <- cat(paste0("Because the samples are independent and two groups were given as input (group and var1), the normality test showed that the distribution of the data are significantly different (Shapiro-Wilk normality test < 0.05), the function assume that a ", crayon::red$bold$underline("Mann Whitney U-test"), " is most appropriate."))
         stat1 <- wilcox.test(var1 ~ group,
                     data=x, exact = F)
         plot1 <- ggqqplot(var1, ylab = "",
                           ggtheme = theme_minimal())
-        return(list(plot1, norm, var, stat1))
+        return(list(msg, plot1, res, var, stat1))
       } 
     }else if((length(unique(group)) > 2L) & (length(group) == length(var1))){
       xx <- cbind.data.frame(var1, group)
@@ -151,14 +153,11 @@ StatHelper <- function(x = NULL,
         group_by(group) %>% 
         summarise(p.value = shapiro.test(var1)$p.value)
       if (any(var$`Pr(>F)` > 0.05) & all(res$p.value > 0.05) == T){
-        norm <- xx %>%
-          group_by(group) %>% 
-          summarise(p.value = shapiro.test(var1)$p.value)
         res.aov <- aov(var1 ~ group,
             data = x)
         test <- summary(res.aov)
         plot <- plot(res.aov, 2)
-        msg <- message("A post-hoc test might be appropriate")
+        msg <- cat(paste0("Because the samples are independent and three or more groups were given as input (group and var1) and the normality test showed that the distribution of the data are not significantly different (Shapiro-Wilk normality test > 0.05), and the variance test showed significance between variances (Levene's test > 0.05), the function assume that a ", crayon::red$bold$underline("one-way ANOVA test"), " is most appropriate. A post-hoc test might be appropriate (See Tukey, Dunnett etc.)."))
         return(list(norm, test, plot, msg))
       }else if(any(var$`Pr(>F)` < 0.05)){
         norm <- xx %>%
@@ -169,12 +168,12 @@ StatHelper <- function(x = NULL,
                                var.equal=FALSE)
         plot1 <- ggqqplot(var1, ylab = "",
                           ggtheme = theme_minimal())
-        msg <- message("A post-hoc test might be appropriate (See Tukey, Dunnett etc.)")
+        msg <- cat(paste0("Because the samples are independent and three or more groups were given as input (group and var1) and the normality test showed that the distribution of the data are not significantly different (Shapiro-Wilk normality test > 0.05), and the variance test showed significance between variances (Levene's test < 0.05), the function assume that a ", crayon::red$bold$underline("Welch's ANOVA test"), " is most appropriate. A post-hoc test might be appropriate."))
         return(list(norm, test, plot1, msg))
       }else if(any(res$p.value < 0.05) == T){
         test <- kruskal.test(var1 ~ group,
                              data = x)
-        msg <- message("A post-hoc test might be appropriate (See Dunn)")
+        msg <- cat(paste0("Because the samples are independent and three or more groups were given as input (group and var1) and the normality test showed that the distribution of the data are not significantly different (Shapiro-Wilk normality test < 0.05), the function assume that a ", crayon::red$bold$underline("Kruskal-Wallis test"), " is most appropriate. A post-hoc test might be appropriate (See Dunn)."))
         return(list(test, msg))
       }
     }
