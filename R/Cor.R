@@ -11,9 +11,12 @@
 #' @examples
 #' # The following example is based on the iris dataset:
 #'
-#' ## Examples
+#' ## Example 1
 #' Cor(x = iris$Sepal.Length, y = iris$Sepal.Width)
 #'
+#'#' ## Example 2
+#' Cor(x = mtcars$mpg, y = mtcars$drat, quiet = FALSE)
+#' 
 #' @import ggplot2
 #'
 #' @export
@@ -36,15 +39,15 @@ Cor <- function(x,
   ## correlation tests
   norm1 <- stats::shapiro.test(x)
   norm2 <- stats::shapiro.test(y)
-  out1 <- boxplot.stats(x)$out
-  out2 <- boxplot.stats(y)$out
-  if((stats::shapiro.test(x)$p > 0.05) && (stats::shapiro.test(y)$p > 0.05)){
-  msg <- cat(paste0("Suggest: According to the data the user provided a ", crayon::red$bold$underline("Pearson test"), " is suggested because the data are not significantly different (Shapiro-Wilk normality test > 0.05)."))
+  out1 <- grDevices::boxplot.stats(x)$out
+  out2 <- grDevices::boxplot.stats(y)$out
+  if((stats::shapiro.test(x)$p > 0.05) && (stats::shapiro.test(y)$p > 0.05) && length(out1) == 0 && length(out2) == 0){
+    msg <- cat(paste0("Suggest: According to the data the user provided a ", crayon::red$bold$underline("Pearson test"), " is suggested because the data are not significantly different (Shapiro-Wilk normality test > 0.05)."))
     test <- stats::cor.test(x, y, method = "pearson")
     plot <- ggplot(mapping = aes(x=x, y=y)) + 
               geom_point(shape=18, color="black", size = 3)+
               theme_classic() +
-              geom_smooth(method=lm,  linetype="dashed",
+              geom_smooth(method=stats::lm,  linetype="dashed",
                   color="darkred", fill="blue") +
               annotate("text", x=Inf, y=Inf, 
                label= paste0("R = ", format(round(test[["estimate"]], digits=2), nsmall = 1),", p = ", signif(test[["p.value"]], digits=3)), 
@@ -60,7 +63,7 @@ Cor <- function(x,
     plot <- ggplot(mapping = aes(x=x, y=y)) + 
       geom_point(shape=18, color="black", size = 3)+
       theme_classic() +
-      geom_smooth(method=lm,  linetype="dashed",
+      geom_smooth(method=stats::lm,  linetype="dashed",
                   color="darkred", fill="blue") +
       annotate("text", x=Inf, y=Inf, 
                label= paste0("R = ", format(round(test[["estimate"]], digits=2), nsmall = 1),", p = ", signif(test[["p.value"]], digits=3)), 
@@ -76,7 +79,7 @@ Cor <- function(x,
   plot <- ggplot(mapping = aes(x=x, y=y)) + 
     geom_point(shape=18, color="black", size = 3)+
     theme_classic() +
-    geom_smooth(method=lm,  linetype="dashed",
+    geom_smooth(method=stats::lm,  linetype="dashed",
                 color="darkred", fill="blue") +
     annotate("text", x=Inf, y=Inf, 
              label= paste0("R = ", format(round(test[["estimate"]], digits=2), nsmall = 1),", p = ", signif(test[["p.value"]], digits=3)), 
