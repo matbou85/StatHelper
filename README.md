@@ -20,14 +20,13 @@ install.packages("StatHelper")
 
 -->
 
-<!-- remove this when released to CRAN
 
 Alternatively, you can install the latest development version from github:
 
 ``` r
 remotes::install_github("matbou85/StatHelper")
 ```
--->
+
 
 ## Basic usage
 
